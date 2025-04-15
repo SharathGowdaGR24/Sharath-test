@@ -1,0 +1,47 @@
+PROD POLICY DB Details:
+------------------------
+Group: TDCSUPROD,
+Title: TDCSU PROD Billing RO User,
+User Name: TDCPOLPRO_RO,
+Password: pTDCp01?r0,
+URL: tdcprod.cvjh3espe046.us-east-1.rds.amazonaws.com
+PORT:1521
+SID/SERVERNAME:tdcprod
+
+SELECT bji.job_instance_id, bji.job_name,BJE.* FROM AWSTDCPOL.batch_job_instance BJI JOIN AWSTDCPOL.batch_job_execution BJE
+ON bji.job_instance_id = bje.job_execution_id
+ORDER BY bje.start_time DESC
+
+select * from batch_controller where creation_timestamp >= to_timestamp('16-10-2022 00:00:00', 'dd-mm-yyyy HH24:MI:SS');
+
+
+PROD CLAIMS DB Details:
+------------------------
+Group: TDCSUPROD,
+Title: TDCSU PROD Billing RO User,
+User Name: TDCCLMPRO_RO,
+Password: pTDCc1m?r0,
+URL: tdcprod.cvjh3espe046.us-east-1.rds.amazonaws.com
+PORT:1521
+SID/SERVERNAME:tdcprod
+
+
+select * from batch_job_execution where create_time >= to_timestamp('09-02-2023 00:00:00', 'dd-mm-yyyy HH24:MI:SS');  ( wokking fine for claims)
+
+
+
+SELECT BL.BTCH_LOG_ID,BL.audt_user_crea_dtm RUN_DATE, BJTC.BTCH_JOB_TYP_NM BATCH_NAME,BLTC.BCTH_LOG_TYP_NM BATCH_INFORMATION, bl. BTCH_LOG_DESC BATCH_INFORMATION ,
+BL.BTCH_LOG_RUN_DT FROM BATCH_LOG BL JOIN BATCH_JOB_TYPE_CD BJTC ON BL.BTCH_JOB_TYP_CD= BJTC.BTCH_JOB_TYP_CD
+JOIN BATCH_LOG_TYPE_CD BLTC ON BL.BTCH_LOG_TYP_CD = BLTC.BTCH_LOG_TYP_CD WHERE bl.audt_user_crea_dtm >= to_timestamp('26-10-2021 00:00:00', 'dd-mm-yyyy HH24:MI:SS')
+order by bl.audt_user_crea_dtm DESC;
+
+
+
+
+SELECT BJI.JOB_INSTANCE_ID, BJI.JOB_NAME,BJE.* FROM BATCH_JOB_INSTANCE BJI JOIN BATCH_JOB_EXECUTION BJE ON BJE.JOB_EXECUTION_ID=BJI.JOB_INSTANCE_ID AND BJE.CREATE_TIME >=to_timestamp('24-09-2021 00:00:00', 'dd-mm-yyyy HH24:MI:SS') order by create_time desc;
+
+
+
+
+SELECT BJI.JOB_INSTANCE_ID, BJI.JOB_NAME,BJE.* FROM BATCH_JOB_INSTANCE BJI JOIN BATCH_JOB_EXECUTION BJE ON 
+BJE.JOB_EXECUTION_ID=BJI.JOB_INSTANCE_ID AND BJE.CREATE_TIME >=to_timestamp('24-09-2021 00:00:00', 'dd-mm-yyyy HH24:MI:SS') order by create_time desc;

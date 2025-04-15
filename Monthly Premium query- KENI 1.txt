@@ -1,0 +1,793 @@
+Query 1
+/*
+Change the value for 
+declare @ProcDate datetime = '02/28/2023', 
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+*/
+
+use KNI_Insurance
+
+declare @ExpiredWP table (EX_PremName varchar(100), EX_PremTotal money, EX_FeeTotal money);
+declare @TOTALWP table (WP_PremName varchar(100), WP_PremTotal money, WP_FeeTotal money);
+declare @TOTALEP table (EP_PremName varchar(100), EP_UEPremTotal money, EP_WrittenFee money,EP_EarnedFee money,EP_UnEarnedFee money);
+ 
+declare @ProcDate datetime = '02/28/2023', 
+@DayAfterProcDate datetime,
+@DateForPremNames datetime;
+set @DayAfterProcDate = dateadd(d, 1, @ProcDate);
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+---===================================================================--
+/** HOMEOWNERS POLICY INFORMATION **/
+---===================================================================--
+--this gets the TOTAL WP of policies directly from the Written Premium tables. The total in the EP table would not be correct
+insert into @TOTALWP
+(WP_PremName, WP_PremTotal, WP_FeeTotal)
+select 
+WP_Prem_Name,
+sum(B.WP_Written_Premium) as WP_Premium,
+sum(B.WP_Written_Fees) as W_Fees
+from HO_PolicyData as A with(NOLOCK)
+join HO_WrittenPremium as B with(NOLOCK) on B.WP_RecordID = A.hPD_ID AND B.WP_PolicyCode = A.hPD_PolicyCode  
+where WP_PolicyCode NOT like 'BH%' AND WP_PolicyCode NOT LIKE 'DF%' 
+AND B.WP_Accounting_Date < @DayAfterProcDate 
+GROUP BY WP_Prem_Name
+
+--this gets the WP of expired policies, which are no longer included in the EP table
+insert into @ExpiredWP
+(EX_PremName, EX_PremTotal, EX_FeeTotal)
+select WP_Prem_Name
+	, sum(WP_Written_Premium)
+	, sum(wp_written_fees)
+from HO_WrittenPremium as wp with(nolock)
+	join HO_PolicyData as pd with(nolock) on wp.WP_RecordID = pd.hPD_ID
+		and wp.WP_PolicyCode = pd.hPD_PolicyCode
+where WP_PolicyCode NOT like 'BH%' AND WP_PolicyCode NOT LIKE 'DF%'
+	and pd.hPD_AccountingDate < @DayAfterProcDate
+	--and @ProcDate not between pd.hPD_EffectiveDate and pd.hPD_ExpirationDate
+	--and pd.hPD_EffectiveDate < @ProcDate
+	and hPD_ExpirationDate < @DayAfterProcDate
+group by WP_Prem_Name;
+
+--this gets the original EP of current policies, which are no longer included the expired ep
+insert into @TOTALEP
+(EP_PremName ,EP_UEPremTotal ,EP_WrittenFee ,EP_EarnedFee ,EP_UnEarnedFee)
+SELECT  
+  /**[EP_TransactionType]**/
+   ep_prem_name
+      ,sum([EP_Unearned_Premium])
+       ,sum([EP_Written_Fees])
+      ,sum([EP_Earned_Fees])
+       ,sum([EP_Unearned_Fees])
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date = @ProcDate
+and EP_PolicyCode NOT like 'BH%' AND EP_PolicyCode NOT LIKE 'DF%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+--Gather totals
+SELECT  
+  /**[EP_TransactionType]**/
+    ep_prem_name
+      ,isnull((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ),0) as HO_WP
+      ,ISNULL(((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) - isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0)),0)  as HO_EP -- substracting unearned premium from Written Premium to get Earned Premium
+      ,isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as HO_UE
+       ,ISNULL(isnull((Select EP_WrittenFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as W_Fees
+      ,ISNULL(isnull((Select EP_EarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as EP_Fees
+       ,isnull((Select EP_UnEarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as UE_Fees
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date > @DateForPremNames 
+and EP_PolicyCode NOT like 'BH%' AND EP_PolicyCode NOT LIKE 'DF%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+delete from @ExpiredWP;
+delete from @TOTALWP;
+delete from @TOTALEP;
+
+Query2
+
+--KENTUCKY
+---===================================================================--
+---===================================================================--
+
+
+use KNI_Insurance
+
+declare @ExpiredWP table (EX_PremName varchar(100), EX_PremTotal money, EX_FeeTotal money);
+declare @TOTALWP table (WP_PremName varchar(100), WP_PremTotal money, WP_FeeTotal money);
+declare @TOTALEP table (EP_PremName varchar(100), EP_UEPremTotal money, EP_WrittenFee money,EP_EarnedFee money,EP_UnEarnedFee money);
+ 
+declare @ProcDate datetime = '03/31/2020', 
+@DayAfterProcDate datetime,
+@DateForPremNames datetime;
+set @DayAfterProcDate = dateadd(d, 1, @ProcDate);
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+
+--this gets the TOTAL WP of policies directly from the Written Premium tables. The total in the EP table would not be correct
+insert into @TOTALWP
+(WP_PremName, WP_PremTotal, WP_FeeTotal)
+select 
+WP_Prem_Name,
+sum(B.WP_Written_Premium) as WP_Premium,
+sum(B.WP_Written_Fees) as W_Fees
+from HO_PolicyData as A with(NOLOCK)
+join HO_WrittenPremium as B with(NOLOCK) on B.WP_RecordID = A.hPD_ID AND B.WP_PolicyCode = A.hPD_PolicyCode  
+where WP_PolicyCode like '%KY%' and WP_PolicyCode NOT like 'BH%' AND WP_PolicyCode NOT LIKE 'DF%'
+AND B.WP_Accounting_Date < @DayAfterProcDate 
+GROUP BY WP_Prem_Name
+
+
+insert into @ExpiredWP
+(EX_PremName, EX_PremTotal, EX_FeeTotal)
+select WP_Prem_Name
+	, sum(WP_Written_Premium)
+	, sum(wp_written_fees)
+from HO_WrittenPremium as wp with(nolock)
+	join HO_PolicyData as pd with(nolock) on wp.WP_RecordID = pd.hPD_ID
+		and wp.WP_PolicyCode = pd.hPD_PolicyCode
+where WP_PolicyCode like '%KY%' and WP_PolicyCode NOT like 'BH%' AND WP_PolicyCode NOT LIKE 'DF%'
+	and pd.hPD_AccountingDate < @DayAfterProcDate
+	--and @ProcDate not between pd.hPD_EffectiveDate and pd.hPD_ExpirationDate
+	--and pd.hPD_EffectiveDate < @ProcDate
+	AND WP_Accounting_Date < @DayAfterProcDate 
+group by WP_Prem_Name;
+
+--this gets the original EP of current policies, which are no longer included the expired ep
+insert into @TOTALEP
+(EP_PremName ,EP_UEPremTotal ,EP_WrittenFee ,EP_EarnedFee ,EP_UnEarnedFee)
+SELECT  
+  /**[EP_TransactionType]**/
+   ep_prem_name
+      ,sum([EP_Unearned_Premium])
+       ,sum([EP_Written_Fees])
+      ,sum([EP_Earned_Fees])
+       ,sum([EP_Unearned_Fees])
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date = @ProcDate
+and EP_PolicyCode like '%KY%' and EP_PolicyCode NOT like 'BH%' AND EP_PolicyCode NOT LIKE 'DF%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+--Gather totals
+SELECT  
+  /**[EP_TransactionType]**/
+   'KY', ep_prem_name
+      ,isnull((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ),0) as HO_WP
+      ,ISNULL(((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) - isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0)),0)  as HO_EP -- substracting unearned premium from Written Premium to get Earned Premium
+      ,isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as HO_UE
+       ,ISNULL(isnull((Select EP_WrittenFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as W_Fees
+      ,ISNULL(isnull((Select EP_EarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as EP_Fees
+       ,isnull((Select EP_UnEarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as UE_Fees
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date > @DateForPremNames 
+and EP_PolicyCode like '%KY%' and EP_PolicyCode NOT like 'BH%' AND EP_PolicyCode NOT LIKE 'DF%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+delete from @ExpiredWP;
+delete from @TOTALWP;
+delete from @TOTALEP;
+
+Query3
+
+---====================TN===============================================--
+---===================================================================--
+use KNI_Insurance
+
+declare @ExpiredWP table (EX_PremName varchar(100), EX_PremTotal money, EX_FeeTotal money);
+declare @TOTALWP table (WP_PremName varchar(100), WP_PremTotal money, WP_FeeTotal money);
+declare @TOTALEP table (EP_PremName varchar(100), EP_UEPremTotal money, EP_WrittenFee money,EP_EarnedFee money,EP_UnEarnedFee money);
+ 
+declare @ProcDate datetime = '03/31/2020', 
+@DayAfterProcDate datetime,
+@DateForPremNames datetime;
+set @DayAfterProcDate = dateadd(d, 1, @ProcDate);
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+
+
+insert into @TOTALWP
+(WP_PremName, WP_PremTotal, WP_FeeTotal)
+select 
+WP_Prem_Name,
+sum(B.WP_Written_Premium) as WP_Premium,
+sum(B.WP_Written_Fees) as W_Fees
+from HO_PolicyData as A with(NOLOCK)
+join HO_WrittenPremium as B with(NOLOCK) on B.WP_RecordID = A.hPD_ID AND B.WP_PolicyCode = A.hPD_PolicyCode  
+where WP_PolicyCode like '%TN%' and WP_PolicyCode NOT like 'BH%' AND WP_PolicyCode NOT LIKE 'DF%'
+AND B.WP_Accounting_Date < @DayAfterProcDate 
+GROUP BY WP_Prem_Name
+
+
+insert into @ExpiredWP
+(EX_PremName, EX_PremTotal, EX_FeeTotal)
+select WP_Prem_Name
+	, sum(WP_Written_Premium)
+	, sum(wp_written_fees)
+from HO_WrittenPremium as wp with(nolock)
+	join HO_PolicyData as pd with(nolock) on wp.WP_RecordID = pd.hPD_ID
+		and wp.WP_PolicyCode = pd.hPD_PolicyCode
+where WP_PolicyCode like '%TN%' and WP_PolicyCode NOT like 'BH%' AND WP_PolicyCode NOT LIKE 'DF%'
+	and pd.hPD_AccountingDate < @DayAfterProcDate
+	--and @ProcDate not between pd.hPD_EffectiveDate and pd.hPD_ExpirationDate
+	--and pd.hPD_EffectiveDate < @ProcDate
+	and hPD_ExpirationDate < @DayAfterProcDate
+group by WP_Prem_Name;
+
+--this gets the original EP of current policies, which are no longer included the expired ep
+insert into @TOTALEP
+(EP_PremName ,EP_UEPremTotal ,EP_WrittenFee ,EP_EarnedFee ,EP_UnEarnedFee)
+SELECT  
+  /**[EP_TransactionType]**/
+   ep_prem_name
+      ,sum([EP_Unearned_Premium])
+       ,sum([EP_Written_Fees])
+      ,sum([EP_Earned_Fees])
+       ,sum([EP_Unearned_Fees])
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date = @ProcDate
+and EP_PolicyCode like '%TN%' and EP_PolicyCode NOT like 'BH%' AND EP_PolicyCode NOT LIKE 'DF%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+--Gather totals
+SELECT  
+  /**[EP_TransactionType]**/
+   'TN', ep_prem_name
+      ,isnull((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ),0) as HO_WP
+      ,ISNULL(((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) - isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0)),0)  as HO_EP -- substracting unearned premium from Written Premium to get Earned Premium
+      ,isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as HO_UE
+       ,ISNULL(isnull((Select EP_WrittenFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as W_Fees
+      ,ISNULL(isnull((Select EP_EarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as EP_Fees
+       ,isnull((Select EP_UnEarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as UE_Fees
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date > @DateForPremNames 
+and EP_PolicyCode like '%TN%' and EP_PolicyCode NOT like 'BH%' AND EP_PolicyCode NOT LIKE 'DF%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+delete from @ExpiredWP;
+delete from @TOTALWP;
+delete from @TOTALEP;
+
+Query4
+
+---===================================================================--
+/** BASIC HOMEOWNERS POLICY INFORMATION **/  KYBH
+---===================================================================--
+use KNI_Insurance
+
+declare @ExpiredWP table (EX_PremName varchar(100), EX_PremTotal money, EX_FeeTotal money);
+declare @TOTALWP table (WP_PremName varchar(100), WP_PremTotal money, WP_FeeTotal money);
+declare @TOTALEP table (EP_PremName varchar(100), EP_UEPremTotal money, EP_WrittenFee money,EP_EarnedFee money,EP_UnEarnedFee money);
+ 
+declare @ProcDate datetime = '03/31/2020', 
+@DayAfterProcDate datetime,
+@DateForPremNames datetime;
+set @DayAfterProcDate = dateadd(d, 1, @ProcDate);
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+
+
+insert into @TOTALWP
+(WP_PremName, WP_PremTotal, WP_FeeTotal)
+select 
+WP_Prem_Name,
+sum(B.WP_Written_Premium) as WP_Premium,
+sum(B.WP_Written_Fees) as W_Fees
+from HO_PolicyData as A with(NOLOCK)
+join HO_WrittenPremium as B with(NOLOCK) on B.WP_RecordID = A.hPD_ID AND B.WP_PolicyCode = A.hPD_PolicyCode  
+where WP_PolicyCode like 'BHKY%'
+AND B.WP_Accounting_Date < @DayAfterProcDate 
+GROUP BY WP_Prem_Name
+
+
+insert into @ExpiredWP
+(EX_PremName, EX_PremTotal, EX_FeeTotal)
+select WP_Prem_Name
+	, sum(WP_Written_Premium)
+	, sum(wp_written_fees)
+from HO_WrittenPremium as wp with(nolock)
+	join HO_PolicyData as pd with(nolock) on wp.WP_RecordID = pd.hPD_ID
+		and wp.WP_PolicyCode = pd.hPD_PolicyCode
+where WP_PolicyCode like 'BHKY%'
+	and pd.hPD_AccountingDate < @DayAfterProcDate
+	--and @ProcDate not between pd.hPD_EffectiveDate and pd.hPD_ExpirationDate
+	--and pd.hPD_EffectiveDate < @ProcDate
+	and hPD_ExpirationDate < @DayAfterProcDate
+group by WP_Prem_Name;
+	     
+
+--this gets the original EP of current policies, which are no longer included the expired ep
+insert into @TOTALEP
+(EP_PremName ,EP_UEPremTotal ,EP_WrittenFee ,EP_EarnedFee ,EP_UnEarnedFee)
+SELECT  
+  /**[EP_TransactionType]**/
+   ep_prem_name
+      ,sum([EP_Unearned_Premium])
+       ,sum([EP_Written_Fees])
+      ,sum([EP_Earned_Fees])
+       ,sum([EP_Unearned_Fees])
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date = @ProcDate
+and EP_PolicyCode like 'BHKY%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+--Gather totals
+SELECT  
+  /**[EP_TransactionType]**/
+   'KYBH', ep_prem_name
+      ,isnull((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ),0) as HO_WP
+      ,ISNULL(((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) - isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0)),0)  as HO_EP -- substracting unearned premium from Written Premium to get Earned Premium
+      ,isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as HO_UE
+       ,ISNULL(isnull((Select EP_WrittenFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as W_Fees
+      ,ISNULL(isnull((Select EP_EarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as EP_Fees
+       ,isnull((Select EP_UnEarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as UE_Fees
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date > @DateForPremNames 
+and EP_PolicyCode like 'BHKY%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+delete from @ExpiredWP;
+delete from @TOTALWP;
+delete from @TOTALEP;
+
+Query5
+
+---===============================DF====================================--
+/** DWELLING FIRE POLICY INFORMATION **/  
+---===================================================================--
+use KNI_Insurance
+
+declare @ExpiredWP table (EX_PremName varchar(100), EX_PremTotal money, EX_FeeTotal money);
+declare @TOTALWP table (WP_PremName varchar(100), WP_PremTotal money, WP_FeeTotal money);
+declare @TOTALEP table (EP_PremName varchar(100), EP_UEPremTotal money, EP_WrittenFee money,EP_EarnedFee money,EP_UnEarnedFee money);
+ 
+declare @ProcDate datetime = '03/31/2020', 
+@DayAfterProcDate datetime,
+@DateForPremNames datetime;
+set @DayAfterProcDate = dateadd(d, 1, @ProcDate);
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+
+
+insert into @TOTALWP
+(WP_PremName, WP_PremTotal, WP_FeeTotal)
+select 
+WP_Prem_Name,
+sum(B.WP_Written_Premium) as WP_Premium,
+sum(B.WP_Written_Fees) as W_Fees
+from HO_PolicyData as A with(NOLOCK)
+join HO_WrittenPremium as B with(NOLOCK) on B.WP_RecordID = A.hPD_ID AND B.WP_PolicyCode = A.hPD_PolicyCode  
+where WP_PolicyCode like 'DF%'
+AND B.WP_Accounting_Date < @DayAfterProcDate 
+GROUP BY WP_Prem_Name
+
+
+insert into @ExpiredWP
+(EX_PremName, EX_PremTotal, EX_FeeTotal)
+select WP_Prem_Name
+	, sum(WP_Written_Premium)
+	, sum(wp_written_fees)
+from HO_WrittenPremium as wp with(nolock)
+	join HO_PolicyData as pd with(nolock) on wp.WP_RecordID = pd.hPD_ID
+		and wp.WP_PolicyCode = pd.hPD_PolicyCode
+where WP_PolicyCode like 'DF%'
+	and pd.hPD_AccountingDate < @DayAfterProcDate
+	--and @ProcDate not between pd.hPD_EffectiveDate and pd.hPD_ExpirationDate
+	--and pd.hPD_EffectiveDate < @ProcDate
+	and hPD_ExpirationDate < @DayAfterProcDate
+group by WP_Prem_Name;
+
+
+--this gets the original EP of current policies, which are no longer included the expired ep
+insert into @TOTALEP
+(EP_PremName ,EP_UEPremTotal ,EP_WrittenFee ,EP_EarnedFee ,EP_UnEarnedFee)
+SELECT  
+  /**[EP_TransactionType]**/
+   ep_prem_name
+      ,sum([EP_Unearned_Premium])
+       ,sum([EP_Written_Fees])
+      ,sum([EP_Earned_Fees])
+       ,sum([EP_Unearned_Fees])
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date = @ProcDate
+and  EP_PolicyCode LIKE 'DF%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+--Gather totals
+SELECT  
+  /**[EP_TransactionType]**/
+   'DF', ep_prem_name
+      ,isnull((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ),0) as HO_WP
+      ,ISNULL(((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) - isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0)),0)  as HO_EP -- substracting unearned premium from Written Premium to get Earned Premium
+      ,isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as HO_UE
+       ,ISNULL(isnull((Select EP_WrittenFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as W_Fees
+      ,ISNULL(isnull((Select EP_EarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as EP_Fees
+       ,isnull((Select EP_UnEarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as UE_Fees
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date > @DateForPremNames 
+and  EP_PolicyCode LIKE 'DF%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+delete from @ExpiredWP;
+delete from @TOTALWP;
+delete from @TOTALEP;
+
+Query6
+
+---===================================================================--
+---=========================KYDF==========================================--
+
+use KNI_Insurance
+
+declare @ExpiredWP table (EX_PremName varchar(100), EX_PremTotal money, EX_FeeTotal money);
+declare @TOTALWP table (WP_PremName varchar(100), WP_PremTotal money, WP_FeeTotal money);
+declare @TOTALEP table (EP_PremName varchar(100), EP_UEPremTotal money, EP_WrittenFee money,EP_EarnedFee money,EP_UnEarnedFee money);
+ 
+declare @ProcDate datetime = '03/31/2020', 
+@DayAfterProcDate datetime,
+@DateForPremNames datetime;
+set @DayAfterProcDate = dateadd(d, 1, @ProcDate);
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+
+insert into @TOTALWP
+(WP_PremName, WP_PremTotal, WP_FeeTotal)
+select 
+WP_Prem_Name,
+sum(B.WP_Written_Premium) as WP_Premium,
+sum(B.WP_Written_Fees) as W_Fees
+from HO_PolicyData as A with(NOLOCK)
+join HO_WrittenPremium as B with(NOLOCK) on B.WP_RecordID = A.hPD_ID AND B.WP_PolicyCode = A.hPD_PolicyCode  
+where WP_PolicyCode like 'DFKY%'
+AND B.WP_Accounting_Date < @DayAfterProcDate 
+GROUP BY WP_Prem_Name
+
+
+insert into @ExpiredWP
+(EX_PremName, EX_PremTotal, EX_FeeTotal)
+select WP_Prem_Name
+	, sum(WP_Written_Premium)
+	, sum(wp_written_fees)
+from HO_WrittenPremium as wp with(nolock)
+	join HO_PolicyData as pd with(nolock) on wp.WP_RecordID = pd.hPD_ID
+		and wp.WP_PolicyCode = pd.hPD_PolicyCode
+where WP_PolicyCode like 'DFKY%'
+	and pd.hPD_AccountingDate < @DayAfterProcDate
+	--and @ProcDate not between pd.hPD_EffectiveDate and pd.hPD_ExpirationDate
+	--and pd.hPD_EffectiveDate < @ProcDate
+	and hPD_ExpirationDate < @DayAfterProcDate
+group by WP_Prem_Name;
+
+--this gets the original EP of current policies, which are no longer included the expired ep
+insert into @TOTALEP
+(EP_PremName ,EP_UEPremTotal ,EP_WrittenFee ,EP_EarnedFee ,EP_UnEarnedFee)
+SELECT  
+  /**[EP_TransactionType]**/
+   ep_prem_name
+      ,sum([EP_Unearned_Premium])
+       ,sum([EP_Written_Fees])
+      ,sum([EP_Earned_Fees])
+       ,sum([EP_Unearned_Fees])
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date = @ProcDate
+and  EP_PolicyCode LIKE 'DFKY%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+--Gather totals
+SELECT  
+  /**[EP_TransactionType]**/
+   'KYDF', ep_prem_name
+      ,isnull((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ),0) as HO_WP
+      ,ISNULL(((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) - isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0)),0)  as HO_EP -- substracting unearned premium from Written Premium to get Earned Premium
+      ,isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as HO_UE
+       ,ISNULL(isnull((Select EP_WrittenFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as W_Fees
+      ,ISNULL(isnull((Select EP_EarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as EP_Fees
+       ,isnull((Select EP_UnEarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as UE_Fees
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date > @DateForPremNames 
+and  EP_PolicyCode LIKE 'DFKY%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+delete from @ExpiredWP;
+delete from @TOTALWP;
+delete from @TOTALEP;
+
+Query7
+---===================================================================--
+---===================================================================--
+
+
+use KNI_Insurance
+
+declare @ExpiredWP table (EX_PremName varchar(100), EX_PremTotal money, EX_FeeTotal money);
+declare @TOTALWP table (WP_PremName varchar(100), WP_PremTotal money, WP_FeeTotal money);
+declare @TOTALEP table (EP_PremName varchar(100), EP_UEPremTotal money, EP_WrittenFee money,EP_EarnedFee money,EP_UnEarnedFee money);
+ 
+declare @ProcDate datetime = '03/31/2020', 
+@DayAfterProcDate datetime,
+@DateForPremNames datetime;
+set @DayAfterProcDate = dateadd(d, 1, @ProcDate);
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+
+
+insert into @TOTALWP
+(WP_PremName, WP_PremTotal, WP_FeeTotal)
+select 
+WP_Prem_Name,
+sum(B.WP_Written_Premium) as WP_Premium,
+sum(B.WP_Written_Fees) as W_Fees
+from HO_PolicyData as A with(NOLOCK)
+join HO_WrittenPremium as B with(NOLOCK) on B.WP_RecordID = A.hPD_ID AND B.WP_PolicyCode = A.hPD_PolicyCode  
+where WP_PolicyCode like 'DFTN%'
+AND B.WP_Accounting_Date < @DayAfterProcDate 
+GROUP BY WP_Prem_Name
+
+
+insert into @ExpiredWP
+(EX_PremName, EX_PremTotal, EX_FeeTotal)
+select WP_Prem_Name
+	, sum(WP_Written_Premium)
+	, sum(wp_written_fees)
+from HO_WrittenPremium as wp with(nolock)
+	join HO_PolicyData as pd with(nolock) on wp.WP_RecordID = pd.hPD_ID
+		and wp.WP_PolicyCode = pd.hPD_PolicyCode
+where WP_PolicyCode like 'DFTN%'
+	and pd.hPD_AccountingDate < @DayAfterProcDate
+	--and @ProcDate not between pd.hPD_EffectiveDate and pd.hPD_ExpirationDate
+	--and pd.hPD_EffectiveDate < @ProcDate
+	and hPD_ExpirationDate < @DayAfterProcDate
+group by WP_Prem_Name;
+
+
+--this gets the original EP of current policies, which are no longer included the expired ep
+insert into @TOTALEP
+(EP_PremName ,EP_UEPremTotal ,EP_WrittenFee ,EP_EarnedFee ,EP_UnEarnedFee)
+SELECT  
+  /**[EP_TransactionType]**/
+   ep_prem_name
+      ,sum([EP_Unearned_Premium])
+       ,sum([EP_Written_Fees])
+      ,sum([EP_Earned_Fees])
+       ,sum([EP_Unearned_Fees])
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date = @ProcDate
+and  EP_PolicyCode LIKE 'DFTN%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+--Gather totals
+SELECT  
+  /**[EP_TransactionType]**/
+   'TNDF', ep_prem_name
+      ,isnull((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ),0) as HO_WP
+      ,ISNULL(((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) - isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0)),0)  as HO_EP -- substracting unearned premium from Written Premium to get Earned Premium
+      ,isnull((Select EP_UEPremTotal From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as HO_UE
+       ,ISNULL(isnull((Select EP_WrittenFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as W_Fees
+      ,ISNULL(isnull((Select EP_EarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) + (select isnull(EX_FeeTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ),0) as EP_Fees
+       ,isnull((Select EP_UnEarnedFee From @TOTALEP Where EP_PremName = ep.EP_Prem_Name),0) as UE_Fees
+FROM [KNI_Insurance].[dbo].[HO_EarnedPremium] as ep with(nolock)
+where ep_premium_date > @DateForPremNames 
+and  EP_PolicyCode LIKE 'DFTN%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+delete from @ExpiredWP;
+delete from @TOTALWP;
+delete from @TOTALEP;
+
+Query8
+
+---===================================================================--
+/** PERSONAL AUTO POLICY INFORMATION **/
+---===================================================================--
+use KNI_Insurance
+
+declare @ExpiredWP table (EX_PremName varchar(100), EX_PremTotal money, EX_FeeTotal money);
+declare @TOTALWP table (WP_PremName varchar(100), WP_PremTotal money, WP_FeeTotal money);
+declare @TOTALEP table (EP_PremName varchar(100), EP_UEPremTotal money, EP_WrittenFee money,EP_EarnedFee money,EP_UnEarnedFee money);
+ 
+declare @ProcDate datetime = '03/31/2020', 
+@DayAfterProcDate datetime,
+@DateForPremNames datetime;
+set @DayAfterProcDate = dateadd(d, 1, @ProcDate);
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+
+
+insert into @TOTALWP
+(WP_PremName, WP_PremTotal, WP_FeeTotal)
+select 
+WP_Prem_Name,
+sum(B.WP_Written_Premium) as WP_Premium,
+sum(B.WP_Written_Fees) as W_Fees
+from AM_PolicyData as A with(NOLOCK)
+join AM_WrittenPremium as B with(NOLOCK) on B.WP_RecordID = A.aPD_ID AND B.WP_PolicyCode = A.aPD_PolicyCode  
+where B.WP_Accounting_Date < @DayAfterProcDate 
+GROUP BY WP_Prem_Name
+ORDER BY WP_Prem_Name
+
+
+insert into @ExpiredWP
+(EX_PremName, EX_PremTotal)
+select WP_Prem_Name
+	, sum(WP_Written_Premium)
+from AM_WrittenPremium as wp with(nolock)
+	join AM_PolicyData as pd with(nolock) on wp.WP_RecordID = pd.aPD_ID
+		and wp.WP_PolicyCode = pd.aPD_PolicyCode
+where pd.aPD_AccountingDate < @DayAfterProcDate
+	--and @ProcDate not between pd.aPD_EffectiveDate and pd.aPD_ExpirationDate
+	--and pd.aPD_EffectiveDate < @ProcDate
+	and aPD_ExpirationDate < @DayAfterProcDate
+group by WP_Prem_Name;
+
+SELECT  
+/**[EP_TransactionType]**/
+            EP_Prem_Name
+     --,sum([EP_AnnualPremium]) as AnnualPremium
+      -- ,sum([EP_AnnualFees]) as AnnualFees
+      --,sum([EP_Written_Premium]) + (select isnull(EX_PremTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ) as AUTO_WP
+      ,(select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) as AUTO_WP
+      --,sum([EP_Earned_Premium]) + (select isnull(EX_PremTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ) as AUTO_EP_ADD
+	  ,((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) - sum([EP_Unearned_Premium])) as AUTO_EP
+      ,sum([EP_Unearned_Premium]) as AUTO_UE
+      -- ,sum([EP_Unearned_Fees]) as UE_Fees
+FROM [KNI_Insurance].[dbo].[AM_EarnedPremium] as ep WITH(NOLOCK) --Use with nolock with your select queries :)
+where ep_premium_date = @ProcDate
+and EP_Days_Earned > 0
+GROUP BY EP_Prem_Name
+ORDER BY EP_Prem_Name
+
+delete from @ExpiredWP;
+delete from @TOTALWP;
+
+Query9
+---===================================================================--
+---===================================================================--
+use KNI_Insurance
+
+declare @ExpiredWP table (EX_PremName varchar(100), EX_PremTotal money, EX_FeeTotal money);
+declare @TOTALWP table (WP_PremName varchar(100), WP_PremTotal money, WP_FeeTotal money);
+declare @TOTALEP table (EP_PremName varchar(100), EP_UEPremTotal money, EP_WrittenFee money,EP_EarnedFee money,EP_UnEarnedFee money);
+ 
+declare @ProcDate datetime = '03/31/2020', 
+@DayAfterProcDate datetime,
+@DateForPremNames datetime;
+set @DayAfterProcDate = dateadd(d, 1, @ProcDate);
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+
+
+insert into @TOTALWP
+(WP_PremName, WP_PremTotal, WP_FeeTotal)
+select 
+WP_Prem_Name,
+sum(B.WP_Written_Premium) as WP_Premium,
+sum(B.WP_Written_Fees) as W_Fees
+from AM_PolicyData as A with(NOLOCK)
+join AM_WrittenPremium as B with(NOLOCK) on B.WP_RecordID = A.aPD_ID AND B.WP_PolicyCode = A.aPD_PolicyCode  
+where WP_PolicyCode like '%KY%'
+and B.WP_Accounting_Date < @DayAfterProcDate 
+GROUP BY WP_Prem_Name
+ORDER BY WP_Prem_Name
+
+
+insert into @ExpiredWP
+(EX_PremName, EX_PremTotal)
+select WP_Prem_Name
+	, sum(WP_Written_Premium)
+from AM_WrittenPremium as wp with(nolock)
+	join AM_PolicyData as pd with(nolock) on wp.WP_RecordID = pd.aPD_ID
+		and wp.WP_PolicyCode = pd.aPD_PolicyCode
+where WP_PolicyCode like '%KY%'
+	and pd.aPD_AccountingDate < @DayAfterProcDate
+	--and @ProcDate not between pd.aPD_EffectiveDate and pd.aPD_ExpirationDate
+	--and pd.aPD_EffectiveDate < @ProcDate
+	and aPD_ExpirationDate < @DayAfterProcDate
+group by WP_Prem_Name;
+
+
+SELECT  
+  /**[EP_TransactionType]**/
+   'KY', ep_prem_name
+    --,sum([EP_AnnualPremium]) as AnnualPremium
+      -- ,sum([EP_AnnualFees]) as AnnualFees
+      ,(select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) as AUTO_WP
+      -- ,sum([EP_Written_Fees]) as W_Fees
+      --,sum([EP_Earned_Premium]) + (select isnull(EX_PremTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ) as AUTO_EP_ADD
+	  ,((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) - sum([EP_Unearned_Premium])) as AUTO_EP
+      -- ,sum([EP_Earned_Fees]) as EP_Fees
+      ,sum([EP_Unearned_Premium]) as AUTO_UE
+      -- ,sum([EP_Unearned_Fees]) as UE_Fees
+FROM [KNI_Insurance].[dbo].[AM_EarnedPremium] as ep with(nolock)
+where ep_premium_date = @ProcDate
+and EP_PolicyCode like '%KY%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+delete from @ExpiredWP;
+delete from @TOTALWP;
+
+Query10
+
+---===================================================================--
+---===================================================================--
+use KNI_Insurance
+
+declare @ExpiredWP table (EX_PremName varchar(100), EX_PremTotal money, EX_FeeTotal money);
+declare @TOTALWP table (WP_PremName varchar(100), WP_PremTotal money, WP_FeeTotal money);
+declare @TOTALEP table (EP_PremName varchar(100), EP_UEPremTotal money, EP_WrittenFee money,EP_EarnedFee money,EP_UnEarnedFee money);
+ 
+declare @ProcDate datetime = '03/31/2020', 
+@DayAfterProcDate datetime,
+@DateForPremNames datetime;
+set @DayAfterProcDate = dateadd(d, 1, @ProcDate);
+set @DateForPremNames = dateadd(MONTH, -12, @ProcDate);
+
+
+insert into @TOTALWP
+(WP_PremName, WP_PremTotal, WP_FeeTotal)
+select 
+WP_Prem_Name,
+sum(B.WP_Written_Premium) as WP_Premium,
+sum(B.WP_Written_Fees) as W_Fees
+from AM_PolicyData as A with(NOLOCK)
+join AM_WrittenPremium as B with(NOLOCK) on B.WP_RecordID = A.aPD_ID AND B.WP_PolicyCode = A.aPD_PolicyCode  
+where WP_PolicyCode like '%TN%'
+and B.WP_Accounting_Date < @DayAfterProcDate 
+GROUP BY WP_Prem_Name
+ORDER BY WP_Prem_Name
+
+
+insert into @ExpiredWP
+(EX_PremName, EX_PremTotal)
+select WP_Prem_Name
+	, sum(WP_Written_Premium)
+from AM_WrittenPremium as wp with(nolock)
+	join AM_PolicyData as pd with(nolock) on wp.WP_RecordID = pd.aPD_ID
+		and wp.WP_PolicyCode = pd.aPD_PolicyCode
+where WP_PolicyCode like '%TN%'
+	and pd.aPD_AccountingDate < @DayAfterProcDate
+	--and @ProcDate not between pd.aPD_EffectiveDate and pd.aPD_ExpirationDate
+	--and pd.aPD_EffectiveDate < @ProcDate
+	and aPD_ExpirationDate < @DayAfterProcDate
+group by WP_Prem_Name;
+
+
+SELECT  
+  /**[EP_TransactionType]**/
+   'TN', ep_prem_name
+    --,sum([EP_AnnualPremium]) as AnnualPremium
+      -- ,sum([EP_AnnualFees]) as AnnualFees
+      ,(select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) as AUTO_WP
+      -- ,sum([EP_Written_Fees]) as W_Fees
+      --,sum([EP_Earned_Premium]) + (select isnull(EX_PremTotal, 0) from @ExpiredWP where EX_PremName = ep.EP_Prem_Name ) as AUTO_EP
+	  ,((select isnull(WP_PremTotal, 0) from @TOTALWP where WP_PremName = ep.EP_Prem_Name ) - sum([EP_Unearned_Premium])) as AUTO_EP
+      -- ,sum([EP_Earned_Fees]) as EP_Fees
+      ,sum([EP_Unearned_Premium]) as AUTO_UE
+      -- ,sum([EP_Unearned_Fees]) as UE_Fees
+FROM [KNI_Insurance].[dbo].[AM_EarnedPremium] as ep with(nolock)
+where ep_premium_date= @ProcDate 
+and EP_PolicyCode like '%TN%'
+and EP_Days_Earned > 0
+group by ep_prem_name
+ORDER BY EP_Prem_Name
+
+delete from @ExpiredWP;
+delete from @TOTALWP;
