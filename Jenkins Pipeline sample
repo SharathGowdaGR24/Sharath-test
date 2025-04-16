@@ -1,0 +1,17 @@
+pipeline {
+    agent any
+    stages {
+        stage ("copy files") {
+         steps {
+          echo "cloning the files"
+          git url: "https://github.com/SharathGowdaGR24/Sharath-test.git" , branch: "main"
+         }
+        }
+        stage ("build") {
+         steps {
+             echo ("Building the Image")
+             sh "docker build -t sharath . "
+         }
+        }
+     }
+}
